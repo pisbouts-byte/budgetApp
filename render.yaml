@@ -5,7 +5,7 @@ services:
     region: oregon
     plan: starter
     rootDir: .
-    buildCommand: npm ci && npm run build --workspace @spend/api
+    buildCommand: npm ci --include=dev && npm run build --workspace @spend/api
     startCommand: npm run start --workspace @spend/api
     healthCheckPath: /health
     autoDeploy: true
