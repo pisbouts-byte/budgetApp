@@ -3,7 +3,12 @@ import { env } from "../config/env.js";
 import { readCookieToken, readCookieValue, tokensEqual } from "./cookies.js";
 
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
-const CSRF_EXEMPT_PATHS = new Set(["/auth/login", "/auth/register"]);
+const CSRF_EXEMPT_PATHS = new Set([
+  "/auth/login",
+  "/auth/register",
+  "/login",
+  "/register"
+]);
 
 function firstHeaderValue(value: string | string[] | undefined) {
   if (!value) {
