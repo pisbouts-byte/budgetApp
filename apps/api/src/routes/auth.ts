@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { z } from "zod";
+import { clearAuthCookie, setAuthCookie } from "../auth/cookies.js";
 import { requireAuth, type AuthenticatedRequest } from "../auth/middleware.js";
 import { hashPassword, verifyPassword } from "../auth/passwords.js";
 import { signAccessToken } from "../auth/tokens.js";
@@ -55,6 +56,7 @@ authRouter.post("/register", async (req, res) => {
       return res.status(500).json({ error: "Failed to register user" });
     }
     const token = signAccessToken({ sub: user.id, email: user.email });
+    setAuthCookie(res, token);
 
     return res.status(201).json({
       user: {
@@ -105,6 +107,7 @@ authRouter.post("/login", async (req, res) => {
   }
 
   const token = signAccessToken({ sub: user.id, email: user.email });
+  setAuthCookie(res, token);
   return res.json({
     user: {
       id: user.id,
@@ -113,6 +116,11 @@ authRouter.post("/login", async (req, res) => {
     },
     token
   });
+});
+
+authRouter.post("/logout", (_req, res) => {
+  clearAuthCookie(res);
+  return res.status(204).send();
 });
 
 authRouter.get("/me", requireAuth, async (req: AuthenticatedRequest, res) => {

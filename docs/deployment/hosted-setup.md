@@ -27,12 +27,14 @@ This guide deploys:
    - `ENCRYPTION_KEY` (64 hex chars)
    - `JWT_SECRET`
    - `JWT_EXPIRES_IN=7d`
+   - `AUTH_COOKIE_NAME=spend_auth`
    - `CORS_ORIGINS=https://<your-vercel-domain>`
    - `RATE_LIMIT_WINDOW_MS=60000`
    - `RATE_LIMIT_MAX_REQUESTS=300`
 5. Deploy and confirm:
    - `GET https://<render-api-domain>/health`
    - `GET https://<render-api-domain>/health/metrics`
+   - Register/login from web works without manual token input (cookie session).
 
 ## 3. Deploy Web (Vercel)
 1. Import this repo in Vercel.

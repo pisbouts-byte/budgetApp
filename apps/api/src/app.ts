@@ -35,6 +35,7 @@ export function createApp() {
   if (env.NODE_ENV === "production" && corsOrigins.length > 0) {
     app.use(
       cors({
+        credentials: true,
         origin: (origin, callback) => {
           if (!origin || corsOrigins.includes(origin)) {
             callback(null, true);
@@ -45,7 +46,12 @@ export function createApp() {
       })
     );
   } else {
-    app.use(cors());
+    app.use(
+      cors({
+        credentials: true,
+        origin: true
+      })
+    );
   }
 
   const buckets = new Map<string, { count: number; resetAt: number }>();

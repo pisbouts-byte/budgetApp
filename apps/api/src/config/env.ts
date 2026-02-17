@@ -53,6 +53,7 @@ const envSchema = z.object({
     .regex(/^[a-fA-F0-9]{64}$/, "ENCRYPTION_KEY must be 64 hex chars"),
   JWT_SECRET: z.string().min(16),
   JWT_EXPIRES_IN: z.string().min(2).default("7d"),
+  AUTH_COOKIE_NAME: z.string().min(1).default("spend_auth"),
   CORS_ORIGINS: z.string().optional(),
   RATE_LIMIT_WINDOW_MS: z.coerce.number().int().min(1000).default(60_000),
   RATE_LIMIT_MAX_REQUESTS: z.coerce.number().int().min(10).default(300)

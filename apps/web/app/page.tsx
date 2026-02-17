@@ -117,7 +117,6 @@ interface AuthResponse {
     email: string;
     displayName: string | null;
   };
-  token: string;
 }
 
 const API_BASE_URL =
@@ -220,7 +219,7 @@ function rangeForPreset(preset: ReportDurationPreset) {
 }
 
 export default function HomePage() {
-  const [token, setToken] = useState("");
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const [showTransactionFilters, setShowTransactionFilters] = useState(false);
   const [showReportFilters, setShowReportFilters] = useState(false);
@@ -315,6 +314,13 @@ export default function HomePage() {
     }
     return q.toString();
   }, [includeExcluded, page, pageSize, search, sortBy, sortOrder]);
+
+  async function apiFetch(path: string, init?: RequestInit) {
+    return fetch(`${API_BASE_URL}${path}`, {
+      ...init,
+      credentials: "include"
+    });
+  }
 
   const transactionColumns = useMemo(
     () => [
@@ -754,13 +760,6 @@ export default function HomePage() {
   );
 
   useEffect(() => {
-    const savedToken = window.localStorage.getItem("spendTrackerToken") ?? "";
-    if (savedToken) {
-      setToken(savedToken);
-    }
-  }, []);
-
-  useEffect(() => {
     function updateMobileState() {
       setIsMobile(window.innerWidth <= 768);
     }
@@ -770,26 +769,9 @@ export default function HomePage() {
   }, []);
 
   useEffect(() => {
-    if (!token.trim()) {
-      window.localStorage.removeItem("spendTrackerToken");
-      return;
-    }
-    window.localStorage.setItem("spendTrackerToken", token.trim());
-  }, [token]);
-
-  useEffect(() => {
-    if (!token.trim()) {
-      setCurrentUser(null);
-      return;
-    }
-
     async function loadCurrentUser() {
       try {
-        const response = await fetch(`${API_BASE_URL}/auth/me`, {
-          headers: {
-            Authorization: `Bearer ${token.trim()}`
-          }
-        });
+        const response = await apiFetch("/auth/me");
         if (!response.ok) {
           throw new Error("Failed to load current user");
         }
@@ -801,16 +783,18 @@ export default function HomePage() {
           email: payload.email,
           displayName: payload.displayName
         });
+        setIsAuthenticated(true);
       } catch {
+        setIsAuthenticated(false);
         setCurrentUser(null);
       }
     }
 
     void loadCurrentUser();
-  }, [token]);
+  }, []);
 
   useEffect(() => {
-    if (!token.trim()) {
+    if (!isAuthenticated) {
       setResult(null);
       return;
     }
@@ -820,11 +804,7 @@ export default function HomePage() {
       setError(null);
 
       try {
-        const response = await fetch(`${API_BASE_URL}/transactions?${query}`, {
-          headers: {
-            Authorization: `Bearer ${token.trim()}`
-          }
-        });
+        const response = await apiFetch(`/transactions?${query}`);
 
         if (!response.ok) {
           throw new Error(`Request failed (${response.status})`);
@@ -843,10 +823,10 @@ export default function HomePage() {
     }
 
     void load();
-  }, [query, token, refreshNonce]);
+  }, [query, isAuthenticated, refreshNonce]);
 
   useEffect(() => {
-    if (!token.trim()) {
+    if (!isAuthenticated) {
       setBudgets([]);
       return;
     }
@@ -855,11 +835,7 @@ export default function HomePage() {
       setBudgetsLoading(true);
       setBudgetsError(null);
       try {
-        const response = await fetch(`${API_BASE_URL}/budgets/progress`, {
-          headers: {
-            Authorization: `Bearer ${token.trim()}`
-          }
-        });
+        const response = await apiFetch("/budgets/progress");
         if (!response.ok) {
           throw new Error(`Budget request failed (${response.status})`);
         }
@@ -877,10 +853,10 @@ export default function HomePage() {
     }
 
     void loadBudgets();
-  }, [token, refreshNonce]);
+  }, [isAuthenticated, refreshNonce]);
 
   useEffect(() => {
-    if (!token.trim()) {
+    if (!isAuthenticated) {
       setBudgetRecords([]);
       return;
     }
@@ -889,14 +865,7 @@ export default function HomePage() {
       setBudgetRecordsLoading(true);
       setBudgetRecordsError(null);
       try {
-        const response = await fetch(
-          `${API_BASE_URL}/budgets?includeInactive=true`,
-          {
-            headers: {
-              Authorization: `Bearer ${token.trim()}`
-            }
-          }
-        );
+        const response = await apiFetch("/budgets?includeInactive=true");
         if (!response.ok) {
           throw new Error(`Budget list request failed (${response.status})`);
         }
@@ -912,10 +881,10 @@ export default function HomePage() {
     }
 
     void loadBudgetRecords();
-  }, [token, refreshNonce]);
+  }, [isAuthenticated, refreshNonce]);
 
   useEffect(() => {
-    if (!token.trim()) {
+    if (!isAuthenticated) {
       setRules([]);
       setCategories([]);
       return;
@@ -925,10 +894,9 @@ export default function HomePage() {
       setRulesLoading(true);
       setRulesError(null);
       try {
-        const headers = { Authorization: `Bearer ${token.trim()}` };
         const [rulesRes, categoriesRes] = await Promise.all([
-          fetch(`${API_BASE_URL}/rules`, { headers }),
-          fetch(`${API_BASE_URL}/categories`, { headers })
+          apiFetch("/rules"),
+          apiFetch("/categories")
         ]);
         if (!rulesRes.ok || !categoriesRes.ok) {
           throw new Error("Failed to load rules/categories");
@@ -954,19 +922,18 @@ export default function HomePage() {
     }
 
     void loadRulesAndCategories();
-  }, [token]);
+  }, [isAuthenticated]);
 
   async function createRule() {
-    if (!token.trim() || !newRule.categoryId || !newRule.pattern.trim()) {
+    if (!isAuthenticated || !newRule.categoryId || !newRule.pattern.trim()) {
       return;
     }
 
     setRulesError(null);
-    const response = await fetch(`${API_BASE_URL}/rules`, {
+    const response = await apiFetch("/rules", {
       method: "POST",
       headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token.trim()}`
+        "Content-Type": "application/json"
       },
       body: JSON.stringify({
         ...newRule,
@@ -983,15 +950,14 @@ export default function HomePage() {
   }
 
   async function patchRule(ruleId: string, patch: Partial<Rule>) {
-    if (!token.trim()) {
+    if (!isAuthenticated) {
       return;
     }
     setRulesError(null);
-    const response = await fetch(`${API_BASE_URL}/rules/${ruleId}`, {
+    const response = await apiFetch(`/rules/${ruleId}`, {
       method: "PATCH",
       headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token.trim()}`
+        "Content-Type": "application/json"
       },
       body: JSON.stringify(patch)
     });
@@ -1006,15 +972,12 @@ export default function HomePage() {
   }
 
   async function deleteRule(ruleId: string) {
-    if (!token.trim()) {
+    if (!isAuthenticated) {
       return;
     }
     setRulesError(null);
-    const response = await fetch(`${API_BASE_URL}/rules/${ruleId}`, {
-      method: "DELETE",
-      headers: {
-        Authorization: `Bearer ${token.trim()}`
-      }
+    const response = await apiFetch(`/rules/${ruleId}`, {
+      method: "DELETE"
     });
     if (!response.ok) {
       setRulesError(`Failed to delete rule (${response.status})`);
@@ -1057,7 +1020,7 @@ export default function HomePage() {
   }
 
   async function connectPlaid() {
-    if (!token.trim()) {
+    if (!isAuthenticated) {
       setPlaidError("Sign in before connecting Plaid.");
       return;
     }
@@ -1067,11 +1030,8 @@ export default function HomePage() {
     setPlaidMessage(null);
 
     try {
-      const createLinkTokenRes = await fetch(`${API_BASE_URL}/plaid/create-link-token`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token.trim()}`
-        }
+      const createLinkTokenRes = await apiFetch("/plaid/create-link-token", {
+        method: "POST"
       });
       if (!createLinkTokenRes.ok) {
         throw new Error(`Failed to create link token (${createLinkTokenRes.status})`);
@@ -1094,11 +1054,10 @@ export default function HomePage() {
           setPlaidError(null);
 
           try {
-            const exchangeRes = await fetch(`${API_BASE_URL}/plaid/exchange-public-token`, {
+            const exchangeRes = await apiFetch("/plaid/exchange-public-token", {
               method: "POST",
               headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${token.trim()}`
+                "Content-Type": "application/json"
               },
               body: JSON.stringify({ publicToken })
             });
@@ -1106,11 +1065,10 @@ export default function HomePage() {
               throw new Error(`Exchange failed (${exchangeRes.status})`);
             }
 
-            const syncRes = await fetch(`${API_BASE_URL}/plaid/transactions/sync`, {
+            const syncRes = await apiFetch("/plaid/transactions/sync", {
               method: "POST",
               headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${token.trim()}`
+                "Content-Type": "application/json"
               },
               body: JSON.stringify({})
             });
@@ -1150,7 +1108,7 @@ export default function HomePage() {
   }
 
   async function createBudget() {
-    if (!token.trim()) {
+    if (!isAuthenticated) {
       return;
     }
 
@@ -1182,11 +1140,10 @@ export default function HomePage() {
     setBudgetCreateMessage(null);
 
     try {
-      const response = await fetch(`${API_BASE_URL}/budgets`, {
+      const response = await apiFetch("/budgets", {
         method: "POST",
         headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token.trim()}`
+          "Content-Type": "application/json"
         },
         body: JSON.stringify({
           name: budgetForm.name.trim(),
@@ -1244,7 +1201,7 @@ export default function HomePage() {
   }
 
   async function saveBudgetEdit(budgetId: string) {
-    if (!token.trim()) {
+    if (!isAuthenticated) {
       return;
     }
 
@@ -1274,11 +1231,10 @@ export default function HomePage() {
     setBudgetActionLoading(true);
     setBudgetActionError(null);
     try {
-      const response = await fetch(`${API_BASE_URL}/budgets/${budgetId}`, {
+      const response = await apiFetch(`/budgets/${budgetId}`, {
         method: "PATCH",
         headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token.trim()}`
+          "Content-Type": "application/json"
         },
         body: JSON.stringify({
           name: editBudgetForm.name.trim(),
@@ -1311,18 +1267,15 @@ export default function HomePage() {
   }
 
   async function deleteBudget(budgetId: string) {
-    if (!token.trim()) {
+    if (!isAuthenticated) {
       return;
     }
 
     setBudgetActionLoading(true);
     setBudgetActionError(null);
     try {
-      const response = await fetch(`${API_BASE_URL}/budgets/${budgetId}`, {
-        method: "DELETE",
-        headers: {
-          Authorization: `Bearer ${token.trim()}`
-        }
+      const response = await apiFetch(`/budgets/${budgetId}`, {
+        method: "DELETE"
       });
       if (!response.ok) {
         const payload = (await response.json().catch(() => ({}))) as {
@@ -1354,7 +1307,7 @@ export default function HomePage() {
   }
 
   async function runReport() {
-    if (!token.trim()) {
+    if (!isAuthenticated) {
       return;
     }
     if (!reportStartDate || !reportEndDate) {
@@ -1369,11 +1322,10 @@ export default function HomePage() {
     setReportLoading(true);
     setReportError(null);
     try {
-      const response = await fetch(`${API_BASE_URL}/reports/query`, {
+      const response = await apiFetch("/reports/query", {
         method: "POST",
         headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token.trim()}`
+          "Content-Type": "application/json"
         },
         body: JSON.stringify({
           dateFrom: reportStartDate,
@@ -1418,7 +1370,7 @@ export default function HomePage() {
     setAuthError(null);
 
     try {
-      const response = await fetch(`${API_BASE_URL}/auth/${authMode}`, {
+      const response = await apiFetch(`/auth/${authMode}`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json"
@@ -1453,11 +1405,11 @@ export default function HomePage() {
       }
 
       const payload = (await response.json()) as AuthResponse;
-      setToken(payload.token);
       setCurrentUser({
         email: payload.user.email,
         displayName: payload.user.displayName
       });
+      setIsAuthenticated(true);
       setPassword("");
       setRefreshNonce((current) => current + 1);
     } catch (submitError) {
@@ -1471,8 +1423,9 @@ export default function HomePage() {
     }
   }
 
-  function logout() {
-    setToken("");
+  async function logout() {
+    await apiFetch("/auth/logout", { method: "POST" });
+    setIsAuthenticated(false);
     setCurrentUser(null);
     setPassword("");
     setPlaidMessage(null);
@@ -1502,7 +1455,7 @@ export default function HomePage() {
       return;
     }
     if (key === "logout") {
-      logout();
+      void logout();
     }
   }
 
@@ -1513,7 +1466,7 @@ export default function HomePage() {
           <Typography.Title level={3} style={{ margin: 0 }}>
             Spending Tracker
           </Typography.Title>
-          {token.trim() && (
+          {isAuthenticated && (
             <Dropdown
               trigger={["click"]}
               menu={{
@@ -1526,7 +1479,7 @@ export default function HomePage() {
           )}
         </div>
 
-        {!token.trim() && (
+        {!isAuthenticated && (
           <div className="authPanel">
             <div className="authModeRow">
               <Button
@@ -1583,7 +1536,7 @@ export default function HomePage() {
           </div>
         )}
 
-        {token.trim() && (
+        {isAuthenticated && (
           <Tabs
             activeKey={activeTab}
             onChange={(key: string) =>
@@ -1598,14 +1551,14 @@ export default function HomePage() {
           />
         )}
 
-        {!token.trim() && (
+        {!isAuthenticated && (
           <p className="hint">Sign in or register above to load your transactions.</p>
         )}
         {error && <Alert type="error" showIcon message={error} />}
         {plaidMessage && <Alert type="info" showIcon message={plaidMessage} />}
         {plaidError && <Alert type="error" showIcon message={plaidError} />}
 
-        {token.trim() && activeTab === "transactions" && (
+        {isAuthenticated && activeTab === "transactions" && (
           <>
             {isMobile && (
               <Button
@@ -1741,7 +1694,7 @@ export default function HomePage() {
           </>
         )}
 
-        {token.trim() && activeTab === "budgets" && (
+        {isAuthenticated && activeTab === "budgets" && (
           <>
             <div className="budgetCreate">
               <label>
@@ -1902,7 +1855,7 @@ export default function HomePage() {
           </>
         )}
 
-        {token.trim() && activeTab === "rules" && (
+        {isAuthenticated && activeTab === "rules" && (
           <>
             {rulesLoading && <p className="hint">Loading rules...</p>}
             {rulesError && <Alert type="error" showIcon message={rulesError} />}
@@ -1973,7 +1926,7 @@ export default function HomePage() {
           </>
         )}
 
-        {token.trim() && activeTab === "reports" && (
+        {isAuthenticated && activeTab === "reports" && (
           <>
             {isMobile && (
               <Button
