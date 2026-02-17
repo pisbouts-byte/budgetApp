@@ -1,0 +1,32 @@
+services:
+  - type: web
+    name: spend-tracker-api
+    env: node
+    region: oregon
+    plan: starter
+    rootDir: .
+    buildCommand: npm ci && npm run build --workspace @spend/api
+    startCommand: npm run start --workspace @spend/api
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: API_PORT
+        value: 10000
+      - key: DATABASE_URL
+        sync: false
+      - key: PLAID_ENV
+        sync: false
+      - key: PLAID_CLIENT_ID
+        sync: false
+      - key: PLAID_SECRET
+        sync: false
+      - key: PLAID_WEBHOOK_URL
+        sync: false
+      - key: ENCRYPTION_KEY
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: JWT_EXPIRES_IN
+        value: 7d

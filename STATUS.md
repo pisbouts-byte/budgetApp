@@ -1,0 +1,327 @@
+# Build Status
+
+Last updated: 2026-02-17
+Current phase: R06 Hardening + Release
+Current task ID: COMPLETE
+
+## Completed This Session
+- Stabilized API middleware lifecycle test by removing hardcoded Express stack index lookup in `/Users/philipisbouts/Documents/New project/apps/api/src/app.test.ts`.
+- Added production API CORS allowlist + rate-limit controls in:
+- `/Users/philipisbouts/Documents/New project/apps/api/src/config/env.ts`
+- `/Users/philipisbouts/Documents/New project/apps/api/src/app.ts`
+- Added mobile install readiness for web app:
+- PWA manifest route in `/Users/philipisbouts/Documents/New project/apps/web/app/manifest.ts`
+- App metadata + viewport config in `/Users/philipisbouts/Documents/New project/apps/web/app/layout.tsx`
+- App icon and Apple icon assets in:
+- `/Users/philipisbouts/Documents/New project/apps/web/app/icon.svg`
+- `/Users/philipisbouts/Documents/New project/apps/web/app/apple-icon.svg`
+- Improved mobile safe-area CSS in `/Users/philipisbouts/Documents/New project/apps/web/app/globals.css`.
+- Added PWA install steps to `/Users/philipisbouts/Documents/New project/docs/deployment/hosted-setup.md`.
+- R00-T01 Initialized monorepo scaffold with:
+- Next.js frontend (`apps/web`)
+- Express API (`apps/api`)
+- Shared types package (`packages/shared`)
+- Root workspace scripts and TypeScript base config
+- R00-T02 Added environment management:
+- Root/API/web `.env.example` files
+- API startup environment validation using `zod`
+- Secrets handling policy at `docs/secrets-policy.md`
+- R00-T03 Added migration tooling:
+- `node-pg-migrate` scripts in root `package.json`
+- Baseline migration created at `db/migrations/001_init_schema.sql`
+- Migration usage documentation at `db/README.md`
+- R00-T04 Added auth baseline:
+- JWT auth strategy with `/auth/register`, `/auth/login`, `/auth/me`
+- Password hashing with `bcryptjs`
+- Postgres user lookups via `pg` pool
+- Migration `002_add_auth_password_hash.sql` for `app_user.password_hash`
+- R00-T05 Added CI workflow:
+- GitHub Actions pipeline for install, lint, typecheck, test, and build
+- Triggered on PRs and pushes to `main`, `master`, and `codex/**`
+- R01-T01 Added Plaid wrapper:
+- Installed Plaid SDK dependency in API package
+- Added `apps/api/src/plaid/client.ts` environment-mapped Plaid client
+- Added integration reference doc at `docs/integrations/plaid.md`
+- R01-T02 Added create-link-token endpoint:
+- `POST /plaid/create-link-token` using `plaidClient.linkTokenCreate`
+- Endpoint requires auth bearer token (`requireAuth`)
+- R01-T03 Added public-token exchange flow:
+- `POST /plaid/exchange-public-token` implemented
+- Persists `plaid_item` and upserts linked `account` rows
+- Exchange + persistence handled in a single DB transaction
+- R01-T04 Added initial transactions sync:
+- `POST /plaid/transactions/sync` implemented
+- Pulls recent transactions via Plaid `transactions/get`
+- Upserts records into local `"transaction"` table and updates `plaid_item.last_synced_at`
+- R01-T05 Added incremental cursor sync:
+- `POST /plaid/transactions/sync-incremental` implemented
+- Processes added/modified/removed transactions from Plaid `transactions/sync`
+- Persists `plaid_item.plaid_cursor` after each successful sync cycle
+- R01-T06 Added webhook handling:
+- `POST /webhooks/plaid` implemented
+- TRANSACTIONS webhooks trigger incremental sync for the affected item
+- Incremental sync logic extracted to shared service `apps/api/src/plaid/incremental-sync.ts`
+- R01-T07 Added idempotency + retry strategy:
+- Added `sync_job` table (`db/migrations/003_add_sync_job_table.sql`)
+- Webhooks now enqueue idempotent jobs via payload hash key
+- Failed jobs transition to `RETRY` with exponential backoff, then `FAILED` at max attempts
+- Added due-job processing endpoint `POST /webhooks/plaid/process-due`
+- R02-T01 Added transaction list API:
+- `GET /transactions` implemented (auth required)
+- Filters: `accountId`, `categoryId`, `includeExcluded`, `search`, `dateFrom`, `dateTo`
+- Supports pagination (`page`, `pageSize`) and safe sorting (`sortBy`, `sortOrder`)
+- Response includes `meta` with total counts and pages
+- R02-T02 Added transaction table UI:
+- Replaced placeholder web page with transaction table screen
+- Added controls for token input, search, includeExcluded, sort, page size, and pagination
+- Wired frontend fetch to `GET /transactions` and rendered table + metadata
+- R02-T03 Added category CRUD API:
+- `GET /categories`, `POST /categories`, `PATCH /categories/:categoryId`, `DELETE /categories/:categoryId`
+- User ownership checks for parent and target categories
+- Prevented deletion of `is_system` categories
+- R02-T04 Added single-transaction recategorization:
+- `PATCH /transactions/:transactionId/category`
+- Validates user-owned transaction and category
+- Writes audit row in `category_change_event` with `create_rule` flag
+- R02-T05 Added bulk recategorization:
+- `PATCH /transactions/category/bulk`
+- Updates up to 500 transactions per request (deduplicated ids)
+- Writes `category_change_event` rows for each affected transaction
+- R02-T06 Added include/exclude toggles:
+- `PATCH /transactions/:transactionId/exclusion`
+- `PATCH /transactions/exclusion/bulk`
+- Updates `transaction.is_excluded` for budget/report calculations
+- R02-T07 Confirmed category change audit persistence:
+- Single and bulk recategorization endpoints both write `category_change_event`
+- R03-T01 Added deterministic rule priority strategy:
+- Rule ordering documented at `docs/categorization/rule-priority.md`
+- Extracted deterministic candidate logic in `apps/api/src/categorization/rules.ts`
+- R03-T02 Added learned-rule creation on manual recategorization:
+- `createRule=true` on `PATCH /transactions/:transactionId/category` now inserts `category_rule`
+- Deduplicates active identical rules by user/category/field/operator/pattern
+- R03-T03 Added rule matcher:
+- Matcher module at `apps/api/src/categorization/matcher.ts`
+- Supports rule fields merchant/description/account/mcc/plaid categories with operators
+- R03-T04 Added deterministic tie-break logic:
+- Rule selection order: lower priority, then higher specificity, then older creation timestamp
+- Endpoint `POST /transactions/:transactionId/apply-category-rules` applies best matched rule
+- R03-T05 Added rule backfill endpoint:
+- `POST /transactions/backfill-category-rules`
+- Scans uncategorized transactions, applies best matching rule, and updates categories in batch
+- Supports `dryRun`, `limit`, and `includeExcluded` options
+- R03-T06 Added confidence scoring:
+- Rule confidence now derived from operator + priority via matcher
+- Applied both in single rule-application and backfill updates
+- R03-T07 Added rule management surface:
+- API `rules` router with CRUD (`GET/POST/PATCH/DELETE /rules`)
+- Web UI section to create/edit/enable-disable/delete rules
+- Mounted `rules` route in API app
+- R04-T01 Added budget CRUD API:
+- `GET /budgets`, `POST /budgets`, `PATCH /budgets/:budgetId`, `DELETE /budgets/:budgetId`
+- Supports weekly/monthly periods, category budgets, and includeExcludedTransactions setting
+- R04-T02 Added configurable week-start preference:
+- `PATCH /auth/preferences` with `weekStartDay` (0-6) and optional `currencyCode`
+- R04-T03 Added period window utility:
+- `apps/api/src/budgets/period.ts` computes weekly/monthly windows honoring `weekStartDay`
+- R04-T04 Added budget progress service endpoint:
+- `GET /budgets/progress` computes spent, remaining, progressRatio, and paceRatio
+- R04-T05 Budget math now supports exclusion behavior:
+- Progress endpoint excludes `is_excluded` transactions unless budget `includeExcludedTransactions=true`
+- R04-T06 Added budget dashboard UI:
+- Web app now renders budget progress cards from `GET /budgets/progress`
+- Includes progress bars and pace labels (over/on/under pace)
+- R04-T07 Added budget threshold alerts endpoint:
+- `GET /budgets/alerts` with configurable `progressThreshold` and `paceThreshold`
+- Flags budgets at/above configured thresholds for lightweight alerting
+- R05-T01 Added reporting query API:
+- `POST /reports/query` with filters for category/account/date/includeExcluded
+- Supports grouped outputs: `none`, `category`, `day`, `merchant`
+- Returns totals (`spent`, `income`, `net`) plus grouped/raw data
+- R05-T02 Added category summary endpoint:
+- `POST /reports/category-summary` grouped by category with totals
+- R05-T03 Added trend endpoint:
+- `POST /reports/trend` with day/week/month interval buckets
+- R05-T04 Added merchant concentration endpoint:
+- `POST /reports/merchant-concentration` with merchant spend share
+- R05-T05 Added budget variance report endpoint:
+- `POST /reports/budget-variance` compares budget amount vs current period spend
+- Uses user week-start aware period windows and budget exclusion policy
+- R05-T06 Added CSV export:
+- `POST /reports/export-csv` returns CSV for grouped/raw report results
+- R05-T07 Added report preset management:
+- `GET/POST/PATCH/DELETE /reports/presets` backed by `report_preset` table
+- R06-T01 Added token encryption at rest:
+- New AES-256-GCM utility at `apps/api/src/security/token-crypto.ts`
+- Plaid access tokens are now encrypted before DB persistence
+- Sync flows decrypt tokens on read with backward-compatible legacy plaintext fallback
+- R06-T02 Added ownership hardening:
+- `/webhooks/plaid/process-due` now requires auth
+- Due-job processing is scoped to authenticated user's jobs only
+- R06-T03 Added structured logging, metrics, and error tracking:
+- Added JSON logger utility at `apps/api/src/observability/logger.ts`
+- Added in-memory request metrics at `apps/api/src/observability/metrics.ts`
+- Added request lifecycle middleware in `apps/api/src/app.ts`:
+- Generates `x-request-id` per request
+- Logs `request.start` and `request.finish` with method/path/status/duration
+- Records status-class counters and duration stats
+- Added global error middleware in `apps/api/src/app.ts`:
+- Logs `request.error` with status and message
+- Returns safe `500` payload for unhandled errors
+- Added `GET /health/metrics` in `apps/api/src/routes/health.ts`
+- Updated startup log to structured `server.start` in `apps/api/src/index.ts`
+- R06-T04 Added initial automated test coverage baseline:
+- Added API unit tests for budget period window and pace math (`apps/api/src/budgets/period.test.ts`)
+- Added retention policy tests (`apps/api/src/data-retention/policy.test.ts`)
+- Added observability metrics tests (`apps/api/src/observability/metrics.test.ts`)
+- Added health route handler tests (`apps/api/src/routes/health.test.ts`)
+- Added token encryption/decryption tests (`apps/api/src/security/token-crypto.test.ts`)
+- Updated API test script to run TypeScript tests via `node --import tsx --test`
+- R06-T05 Added data retention + deletion workflow:
+- New retention policy utility at `apps/api/src/data-retention/policy.ts`
+- New authenticated data lifecycle routes at `apps/api/src/routes/data.ts`
+- `GET /data/deletion-preview` returns user-scoped delete impact counts
+- `DELETE /data/me` performs explicit confirmed full-user deletion with cascade
+- `POST /data/retention/purge` purges stale user-scoped audit/operational data
+- R06-T06 Added production deployment runbook:
+- Added `docs/deployment/runbook.md` with pre-deploy checks, deploy sequence, verification, rollback, and incident notes
+- R06-T04 Expanded and completed automated coverage:
+- Added app middleware tests in `apps/api/src/app.test.ts`
+- Added data lifecycle route tests in `apps/api/src/routes/data.test.ts`
+- Fixed test file glob in `apps/api/package.json` to include root + nested tests
+
+## In Progress
+- All roadmap tasks through R06 are complete.
+- No blockers.
+
+## Known Issues / Risks
+- CI is configured but not executed in this local environment.
+- Plaid flows are scaffolded but not exercised without real sandbox credentials.
+- Plaid endpoint behavior unverified locally with real sandbox credentials.
+- `/webhooks/plaid` is intentionally open for Plaid callbacks; signature verification is not implemented yet.
+- Transaction list endpoint has no integration tests yet.
+- Transaction UI currently uses manual JWT paste for auth.
+- Category CRUD endpoints have no integration tests yet.
+- Recategorization endpoint has no integration tests yet.
+- Bulk recategorization endpoint currently inserts audit rows one-by-one (can be optimized later).
+- Exclusion toggle endpoints have no integration tests yet.
+- Learned-rule creation flow has no integration tests yet.
+- Rule matcher and apply endpoint have no integration tests yet.
+- Rule backfill endpoint has no integration tests yet.
+- Rules CRUD endpoints and UI interactions have no integration tests yet.
+- Budget endpoints have no integration tests yet.
+- Budget progress endpoint has no integration tests yet.
+- Budget dashboard UI has no integration tests yet.
+- Budget alerts endpoint has no integration tests yet.
+- Reports query endpoint has no integration tests yet.
+- New report endpoints have no integration tests yet.
+- Budget variance report endpoint has no integration tests yet.
+- Report CSV export and preset endpoints have no integration tests yet.
+- Encryption/decryption paths have no integration tests yet.
+- Webhook due-job auth/ownership checks have no integration tests yet.
+
+## Validation Run
+- Lint: not run
+- Typecheck: pass (`@spend/api`, `@spend/web`)
+- Tests: pass (`@spend/api`, 18 tests)
+- Manual checks: file structure and config consistency reviewed
+
+## Files Changed
+- .gitignore
+- package.json
+- tsconfig.base.json
+- apps/api/package.json
+- apps/api/tsconfig.json
+- apps/api/src/app.ts
+- apps/api/src/index.ts
+- apps/api/src/config/env.ts
+- apps/api/src/routes/health.ts
+- apps/api/src/routes/auth.ts
+- apps/api/src/auth/middleware.ts
+- apps/api/src/auth/passwords.ts
+- apps/api/src/auth/tokens.ts
+- apps/api/src/db/pool.ts
+- apps/api/.env.example
+- apps/web/package.json
+- apps/web/tsconfig.json
+- apps/web/next-env.d.ts
+- apps/web/next.config.ts
+- apps/web/app/layout.tsx
+- apps/web/app/page.tsx
+- apps/web/app/globals.css
+- apps/api/src/routes/categories.ts
+- apps/api/src/routes/transactions.ts
+- apps/api/src/categorization/rules.ts
+- apps/api/src/categorization/matcher.ts
+- apps/api/src/routes/rules.ts
+- apps/api/src/routes/budgets.ts
+- apps/api/src/routes/reports.ts
+- apps/api/src/security/token-crypto.ts
+- apps/api/src/config/env.ts
+- apps/api/.env.example
+- apps/api/src/routes/webhooks.ts
+- apps/api/src/sync/jobs.ts
+- apps/api/src/budgets/period.ts
+- apps/api/src/observability/logger.ts
+- apps/api/src/observability/metrics.ts
+- apps/api/src/budgets/period.test.ts
+- apps/api/src/data-retention/policy.ts
+- apps/api/src/data-retention/policy.test.ts
+- apps/api/src/routes/data.ts
+- apps/api/src/routes/health.test.ts
+- apps/api/src/security/token-crypto.test.ts
+- docs/deployment/runbook.md
+- apps/api/src/routes/budgets.ts
+- apps/web/app/page.tsx
+- apps/web/app/globals.css
+- docs/categorization/rule-priority.md
+- apps/web/app/page.tsx
+- apps/web/app/globals.css
+- apps/web/.env.example
+- packages/shared/package.json
+- packages/shared/tsconfig.json
+- packages/shared/src/index.ts
+- .github/workflows/ci.yml
+- apps/api/src/plaid/client.ts
+- apps/api/src/routes/plaid.ts
+- apps/api/src/routes/webhooks.ts
+- apps/api/src/plaid/incremental-sync.ts
+- apps/api/src/sync/jobs.ts
+- apps/api/src/types/bcryptjs.d.ts
+- apps/api/src/routes/transactions.ts
+- apps/web/app/page.tsx
+- apps/web/app/globals.css
+- db/migrations/001_init_schema.sql
+- db/migrations/002_add_auth_password_hash.sql
+- db/migrations/003_add_sync_job_table.sql
+- db/README.md
+- docs/roadmap.md
+- docs/secrets-policy.md
+- docs/integrations/plaid.md
+- .env.example
+- README.md
+
+## Notes for Next Session
+- Run `npm install`, then execute `npm run db:migrate:up` against your local Postgres.
+- After migrations, test auth endpoints locally (`/auth/register`, `/auth/login`, `/auth/me`).
+- Validate `GET /transactions` with real synced data and filter combinations.
+- Validate web table against `/transactions` using a real user token.
+- Validate category CRUD with real user token and duplicate-name conflict behavior.
+- Validate `PATCH /transactions/:transactionId/category` with and without `createRule`.
+- Validate `PATCH /transactions/category/bulk` with mixed valid/invalid ids.
+- Validate exclusion toggles: single and bulk endpoints.
+- Validate rule creation by recategorizing with `createRule=true`.
+- Validate rule application via `POST /transactions/:transactionId/apply-category-rules`.
+- Validate backfill via `POST /transactions/backfill-category-rules` (dryRun + non-dryRun).
+- Validate `/rules` CRUD endpoints and rule-management UI actions.
+- Validate `/budgets` CRUD and `/auth/preferences` weekStartDay update.
+- Validate `/budgets/progress` with weekly/monthly budgets and excluded transaction scenarios.
+- Validate budget cards render correctly with mixed budget periods.
+- Validate `/budgets/alerts` thresholds against realistic budget progress states.
+- Validate `/reports/query` with each groupBy mode and filter combinations.
+- Validate `/reports/category-summary`, `/reports/trend`, `/reports/merchant-concentration`.
+- Validate `/reports/budget-variance` against active budgets and real transactions.
+- Validate CSV export output and report preset CRUD lifecycle.
+- Validate encrypted Plaid item persistence and successful decrypt during sync calls.
+- Validate authenticated `/webhooks/plaid/process-due` only processes caller-owned jobs.
+- Keep API port at `4000` and web port at `3000`.
+- Existing canonical schema file is at `db/schema.sql`.

@@ -1,0 +1,26 @@
+{
+  "name": "spending-tracker",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "dev": "npm run dev --workspace @spend/web",
+    "dev:api": "npm run dev --workspace @spend/api",
+    "db:migrate:create": "set -a; [ -f ./.env ] && . ./.env; set +a; node-pg-migrate create --migrations-dir db/migrations --migration-file-language sql",
+    "db:migrate:up": "set -a; [ -f ./.env ] && . ./.env; set +a; node-pg-migrate up --migrations-dir db/migrations --migration-file-language sql",
+    "db:migrate:down": "set -a; [ -f ./.env ] && . ./.env; set +a; node-pg-migrate down --migrations-dir db/migrations --migration-file-language sql",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present"
+  },
+  "devDependencies": {
+    "node-pg-migrate": "^8.0.3"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}
