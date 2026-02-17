@@ -2,6 +2,7 @@ import cors from "cors";
 import express from "express";
 import { randomUUID } from "crypto";
 import type { NextFunction, Request, Response } from "express";
+import { requireCsrfForCookieAuth } from "./auth/csrf.js";
 import { env } from "./config/env.js";
 import { logError, logInfo } from "./observability/logger.js";
 import { recordRequest } from "./observability/metrics.js";
@@ -85,6 +86,7 @@ export function createApp() {
       }
     })
   );
+  app.use(requireCsrfForCookieAuth);
   app.use((req: Request, res: Response, next: NextFunction) => {
     const requestId = randomUUID();
     const start = process.hrtime.bigint();

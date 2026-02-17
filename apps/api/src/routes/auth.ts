@@ -1,9 +1,16 @@
 import { Router } from "express";
 import { z } from "zod";
-import { clearAuthCookie, setAuthCookie } from "../auth/cookies.js";
+import {
+  clearAuthCookie,
+  clearCsrfCookie,
+  issueCsrfToken,
+  readCookieValue,
+  setAuthCookie
+} from "../auth/cookies.js";
 import { requireAuth, type AuthenticatedRequest } from "../auth/middleware.js";
 import { hashPassword, verifyPassword } from "../auth/passwords.js";
 import { signAccessToken } from "../auth/tokens.js";
+import { env } from "../config/env.js";
 import { db } from "../db/pool.js";
 
 const registerSchema = z.object({
@@ -57,6 +64,7 @@ authRouter.post("/register", async (req, res) => {
     }
     const token = signAccessToken({ sub: user.id, email: user.email });
     setAuthCookie(res, token);
+    const csrfToken = issueCsrfToken(res);
 
     return res.status(201).json({
       user: {
@@ -64,7 +72,7 @@ authRouter.post("/register", async (req, res) => {
         email: user.email,
         displayName: user.display_name
       },
-      token
+      csrfToken
     });
   } catch (error) {
     if ((error as { code?: string }).code === "23505") {
@@ -108,18 +116,20 @@ authRouter.post("/login", async (req, res) => {
 
   const token = signAccessToken({ sub: user.id, email: user.email });
   setAuthCookie(res, token);
+  const csrfToken = issueCsrfToken(res);
   return res.json({
     user: {
       id: user.id,
       email: user.email,
       displayName: user.display_name
     },
-    token
+    csrfToken
   });
 });
 
 authRouter.post("/logout", (_req, res) => {
   clearAuthCookie(res);
+  clearCsrfCookie(res);
   return res.status(204).send();
 });
 
@@ -147,12 +157,19 @@ authRouter.get("/me", requireAuth, async (req: AuthenticatedRequest, res) => {
     return res.status(404).json({ error: "User not found" });
   }
 
+  const existingCsrfToken = readCookieValue(
+    req.headers.cookie,
+    env.AUTH_CSRF_COOKIE_NAME
+  );
+  const csrfToken = existingCsrfToken ?? issueCsrfToken(res);
+
   return res.json({
     id: user.id,
     email: user.email,
     displayName: user.display_name,
     weekStartDay: user.week_start_day,
-    currencyCode: user.currency_code
+    currencyCode: user.currency_code,
+    csrfToken
   });
 });
 

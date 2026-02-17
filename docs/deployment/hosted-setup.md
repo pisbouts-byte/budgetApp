@@ -29,6 +29,7 @@ This guide deploys:
    - `JWT_SECRET`
    - `JWT_EXPIRES_IN=7d`
    - `AUTH_COOKIE_NAME=spend_auth`
+   - `AUTH_CSRF_COOKIE_NAME=spend_csrf`
    - `CORS_ORIGINS=https://<your-vercel-domain>`
    - `RATE_LIMIT_WINDOW_MS=60000`
    - `RATE_LIMIT_MAX_REQUESTS=300`
@@ -81,3 +82,34 @@ After web deployment on HTTPS:
    - tabs/navigation
    - budget and report forms
    - Plaid connect flow opens correctly
+
+## 9. Render Monitoring Alerts (Recommended)
+Configure alerts on `spend-tracker-api` in Render:
+1. Open Render -> `spend-tracker-api` -> `Metrics` -> `Alerts`.
+2. Add `HTTP 5xx` alert:
+   - condition: error rate > 2% for 5 minutes
+   - notify: email (and Slack if connected)
+3. Add latency alert:
+   - condition: P95 response time > 1500 ms for 10 minutes
+4. Add memory alert:
+   - condition: memory usage > 85% for 10 minutes
+5. Add CPU alert (optional but useful):
+   - condition: CPU usage > 80% for 10 minutes
+6. Open alert notification settings and ensure your primary email is verified.
+
+## 10. Uptime Monitor (Health Endpoint)
+Set up an external uptime check for the API health endpoint:
+1. Use an uptime service (for example UptimeRobot, Better Stack, or Pingdom).
+2. Create HTTP monitor:
+   - URL: `https://spend-tracker-api.onrender.com/health`
+   - method: `GET`
+   - interval: every 1 minute
+   - timeout: 10 seconds
+3. Expected healthy response:
+   - HTTP status `200`
+   - body contains `"status":"ok"`
+4. Alert routing:
+   - primary email
+   - optional SMS/phone for prolonged outages
+5. Add a second monitor (optional) for:
+   - URL: `https://spend-tracker-api.onrender.com/health/metrics`

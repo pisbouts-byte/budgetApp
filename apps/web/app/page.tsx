@@ -117,6 +117,7 @@ interface AuthResponse {
     email: string;
     displayName: string | null;
   };
+  csrfToken: string;
 }
 
 const API_BASE_URL =
@@ -220,6 +221,7 @@ function rangeForPreset(preset: ReportDurationPreset) {
 
 export default function HomePage() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [csrfToken, setCsrfToken] = useState("");
   const [isMobile, setIsMobile] = useState(false);
   const [showTransactionFilters, setShowTransactionFilters] = useState(false);
   const [showReportFilters, setShowReportFilters] = useState(false);
@@ -318,8 +320,15 @@ export default function HomePage() {
   }, [includeExcluded, page, pageSize, search, sortBy, sortOrder]);
 
   async function apiFetch(path: string, init?: RequestInit) {
+    const method = (init?.method ?? "GET").toUpperCase();
+    const needsCsrf = !["GET", "HEAD", "OPTIONS"].includes(method);
+    const headers = new Headers(init?.headers ?? undefined);
+    if (needsCsrf && csrfToken) {
+      headers.set("x-csrf-token", csrfToken);
+    }
     return fetch(`${API_BASE_URL}${path}`, {
       ...init,
+      headers,
       credentials: "include"
     });
   }
@@ -780,14 +789,17 @@ export default function HomePage() {
         const payload = (await response.json()) as {
           email: string;
           displayName: string | null;
+          csrfToken: string;
         };
         setCurrentUser({
           email: payload.email,
           displayName: payload.displayName
         });
+        setCsrfToken(payload.csrfToken);
         setIsAuthenticated(true);
       } catch {
         setIsAuthenticated(false);
+        setCsrfToken("");
         setCurrentUser(null);
       }
     }
@@ -1443,6 +1455,7 @@ export default function HomePage() {
         email: payload.user.email,
         displayName: payload.user.displayName
       });
+      setCsrfToken(payload.csrfToken);
       setIsAuthenticated(true);
       setPassword("");
       setRefreshNonce((current) => current + 1);
@@ -1460,6 +1473,7 @@ export default function HomePage() {
   async function logout() {
     await apiFetch("/auth/logout", { method: "POST" });
     setIsAuthenticated(false);
+    setCsrfToken("");
     setCurrentUser(null);
     setPassword("");
     setPlaidMessage(null);

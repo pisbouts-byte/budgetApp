@@ -55,6 +55,7 @@ const envSchema = z.object({
   JWT_SECRET: z.string().min(16),
   JWT_EXPIRES_IN: z.string().min(2).default("7d"),
   AUTH_COOKIE_NAME: z.string().min(1).default("spend_auth"),
+  AUTH_CSRF_COOKIE_NAME: z.string().min(1).default("spend_csrf"),
   CORS_ORIGINS: z.string().optional(),
   RATE_LIMIT_WINDOW_MS: z.coerce.number().int().min(1000).default(60_000),
   RATE_LIMIT_MAX_REQUESTS: z.coerce.number().int().min(10).default(300)
