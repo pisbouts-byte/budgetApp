@@ -59,6 +59,7 @@ Monorepo scaffold for a spending tracker app with Plaid integration, editable ca
 ## Deployment Runbook
 - Production deployment guide: `docs/deployment/runbook.md`
 - Hosted deployment setup (Render + Vercel): `docs/deployment/hosted-setup.md`
+- V1 launch gate checklist: `docs/deployment/v1-launch-checklist.md`
 
 ## Transactions API Baseline
 - List transactions: `GET /transactions`
