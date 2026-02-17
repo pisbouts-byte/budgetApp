@@ -250,6 +250,8 @@ export default function HomePage() {
   const [rulesError, setRulesError] = useState<string | null>(null);
   const [rules, setRules] = useState<Rule[]>([]);
   const [plaidLoading, setPlaidLoading] = useState(false);
+  const [syncLoading, setSyncLoading] = useState(false);
+  const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
   const [plaidMessage, setPlaidMessage] = useState<string | null>(null);
   const [plaidError, setPlaidError] = useState<string | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -1107,6 +1109,38 @@ export default function HomePage() {
     }
   }
 
+  async function syncNow() {
+    if (!isAuthenticated) {
+      setPlaidError("Sign in before syncing.");
+      return;
+    }
+
+    setSyncLoading(true);
+    setPlaidError(null);
+    setPlaidMessage(null);
+    try {
+      const response = await apiFetch("/plaid/transactions/sync-incremental", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({})
+      });
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => ({}))) as { error?: string };
+        throw new Error(payload.error ?? `Sync failed (${response.status})`);
+      }
+      const nowIso = new Date().toISOString();
+      setLastSyncedAt(nowIso);
+      setPlaidMessage("Sync complete. Transactions refreshed.");
+      setRefreshNonce((current) => current + 1);
+    } catch (error) {
+      setPlaidError(error instanceof Error ? error.message : "Failed to sync transactions");
+    } finally {
+      setSyncLoading(false);
+    }
+  }
+
   async function createBudget() {
     if (!isAuthenticated) {
       return;
@@ -1441,6 +1475,11 @@ export default function HomePage() {
       disabled: plaidLoading
     },
     {
+      key: "sync",
+      label: syncLoading ? "Syncing..." : "Sync Now",
+      disabled: syncLoading || plaidLoading
+    },
+    {
       type: "divider"
     },
     {
@@ -1452,6 +1491,10 @@ export default function HomePage() {
   function onMenuClick(key: string) {
     if (key === "connect") {
       void connectPlaid();
+      return;
+    }
+    if (key === "sync") {
+      void syncNow();
       return;
     }
     if (key === "logout") {
@@ -1560,6 +1603,20 @@ export default function HomePage() {
 
         {isAuthenticated && activeTab === "transactions" && (
           <>
+            <div className="rowActions">
+              <Button
+                onClick={() => void syncNow()}
+                loading={syncLoading}
+                disabled={plaidLoading}
+              >
+                Sync now
+              </Button>
+              {lastSyncedAt && (
+                <Typography.Text type="secondary">
+                  Last synced: {new Date(lastSyncedAt).toLocaleString()}
+                </Typography.Text>
+              )}
+            </div>
             {isMobile && (
               <Button
                 className="mobileFilterBtn"
