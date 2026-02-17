@@ -78,7 +78,13 @@ export function createApp() {
     return next();
   });
 
-  app.use(express.json());
+  app.use(
+    express.json({
+      verify: (req, _res, buf) => {
+        (req as Request & { rawBody?: string }).rawBody = buf.toString("utf8");
+      }
+    })
+  );
   app.use((req: Request, res: Response, next: NextFunction) => {
     const requestId = randomUUID();
     const start = process.hrtime.bigint();

@@ -1,6 +1,8 @@
 import { Router } from "express";
 import { z } from "zod";
+import { env } from "../config/env.js";
 import { requireAuth, type AuthenticatedRequest } from "../auth/middleware.js";
+import { verifyPlaidWebhookSignature } from "../plaid/webhook-verification.js";
 import {
   enqueueWebhookSyncJob,
   processDueSyncJobsForUser,
@@ -17,6 +19,21 @@ const plaidWebhookSchema = z.object({
 export const webhooksRouter = Router();
 
 webhooksRouter.post("/plaid", async (req, res) => {
+  if (env.PLAID_WEBHOOK_VERIFICATION_ENABLED) {
+    const plaidVerificationHeader = Array.isArray(req.headers["plaid-verification"])
+      ? req.headers["plaid-verification"][0]
+      : req.headers["plaid-verification"];
+    const rawBody =
+      (req as { rawBody?: string }).rawBody ?? JSON.stringify(req.body ?? {});
+    const verification = await verifyPlaidWebhookSignature({
+      plaidVerificationHeader,
+      rawBody
+    });
+    if (!verification.ok) {
+      return res.status(401).json({ error: verification.reason });
+    }
+  }
+
   const parsed = plaidWebhookSchema.safeParse(req.body);
   if (!parsed.success) {
     return res.status(400).json({

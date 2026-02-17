@@ -24,6 +24,7 @@ This guide deploys:
    - `PLAID_CLIENT_ID`
    - `PLAID_SECRET`
    - `PLAID_WEBHOOK_URL` (use your Render API URL + `/webhooks/plaid`)
+   - `PLAID_WEBHOOK_VERIFICATION_ENABLED=true`
    - `ENCRYPTION_KEY` (64 hex chars)
    - `JWT_SECRET`
    - `JWT_EXPIRES_IN=7d`

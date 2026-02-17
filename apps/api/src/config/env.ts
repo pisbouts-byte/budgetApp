@@ -48,6 +48,7 @@ const envSchema = z.object({
   PLAID_CLIENT_ID: z.string().min(1),
   PLAID_SECRET: z.string().min(1),
   PLAID_WEBHOOK_URL: z.string().url(),
+  PLAID_WEBHOOK_VERIFICATION_ENABLED: z.coerce.boolean().default(true),
   ENCRYPTION_KEY: z
     .string()
     .regex(/^[a-fA-F0-9]{64}$/, "ENCRYPTION_KEY must be 64 hex chars"),
