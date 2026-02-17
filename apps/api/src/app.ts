@@ -25,8 +25,25 @@ function allowedCorsOrigins() {
   if (!env.CORS_ORIGINS?.trim()) {
     return [];
   }
+
   return env.CORS_ORIGINS.split(",")
     .map((origin) => origin.trim())
+    .map((origin) => {
+      if (
+        (origin.startsWith("\"") && origin.endsWith("\"")) ||
+        (origin.startsWith("'") && origin.endsWith("'"))
+      ) {
+        return origin.slice(1, -1).trim();
+      }
+      return origin;
+    })
+    .map((origin) => {
+      try {
+        return new URL(origin).origin;
+      } catch {
+        return origin.replace(/\/+$/, "");
+      }
+    })
     .filter(Boolean);
 }
 
@@ -38,7 +55,17 @@ export function createApp() {
       cors({
         credentials: true,
         origin: (origin, callback) => {
-          if (!origin || corsOrigins.includes(origin)) {
+          if (!origin) {
+            callback(null, true);
+            return;
+          }
+          let normalizedOrigin = origin;
+          try {
+            normalizedOrigin = new URL(origin).origin;
+          } catch {
+            normalizedOrigin = origin.replace(/\/+$/, "");
+          }
+          if (corsOrigins.includes(normalizedOrigin)) {
             callback(null, true);
             return;
           }
