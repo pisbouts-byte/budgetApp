@@ -314,7 +314,11 @@ plaidRouter.post(
       if ((error as { name?: string }).name === "NoItemsError") {
         return res.status(404).json({ error: "No linked Plaid items found" });
       }
-      return res.status(502).json({ error: "Failed to run incremental sync" });
+      const message =
+        error instanceof Error && error.message
+          ? error.message
+          : "Failed to run incremental sync";
+      return res.status(502).json({ error: message });
     }
   }
 );

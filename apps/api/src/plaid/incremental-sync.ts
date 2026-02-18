@@ -18,6 +18,24 @@ interface SyncTransaction {
   } | null;
 }
 
+function plaidErrorCode(error: unknown) {
+  const code = (error as { response?: { data?: { error_code?: unknown } } })?.response
+    ?.data?.error_code;
+  return typeof code === "string" ? code : null;
+}
+
+function plaidErrorMessage(error: unknown) {
+  const message = (error as { response?: { data?: { error_message?: unknown } } })?.response
+    ?.data?.error_message;
+  if (typeof message === "string" && message.trim()) {
+    return message;
+  }
+  if (error instanceof Error && error.message.trim()) {
+    return error.message;
+  }
+  return "Unknown Plaid sync error";
+}
+
 function plaidCategoryLabel(tx: SyncTransaction) {
   const detailed = tx.personal_finance_category?.detailed?.trim();
   const primary = tx.personal_finance_category?.primary?.trim();
@@ -186,10 +204,31 @@ export async function runIncrementalSyncForUser(params: {
     let hasMore = true;
 
     while (hasMore) {
-      const syncResponse = await plaidClient.transactionsSync({
-        access_token: decryptSecret(item.access_token_encrypted),
-        cursor
-      });
+      let syncResponse;
+      try {
+        syncResponse = await plaidClient.transactionsSync({
+          access_token: decryptSecret(item.access_token_encrypted),
+          cursor
+        });
+      } catch (error) {
+        // Cursor drift can occur in production; reset once and retry from scratch.
+        if (cursor) {
+          cursor = undefined;
+          await db.query(
+            `UPDATE plaid_item
+             SET plaid_cursor = NULL
+             WHERE id = $1`,
+            [item.id]
+          );
+          syncResponse = await plaidClient.transactionsSync({
+            access_token: decryptSecret(item.access_token_encrypted),
+            cursor
+          });
+        } else {
+          const details = `${plaidErrorCode(error) ?? "PLAID_ERROR"}: ${plaidErrorMessage(error)}`;
+          throw new Error(details);
+        }
+      }
 
       for (const tx of syncResponse.data.added) {
         const accountId = accountByPlaidId.get(tx.account_id);
