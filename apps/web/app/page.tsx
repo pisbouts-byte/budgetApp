@@ -1131,16 +1131,35 @@ export default function HomePage() {
     setPlaidError(null);
     setPlaidMessage(null);
     try {
-      const response = await apiFetch("/plaid/transactions/sync-incremental", {
+      const incrementalResponse = await apiFetch("/plaid/transactions/sync-incremental", {
         method: "POST",
         headers: {
           "Content-Type": "application/json"
         },
         body: JSON.stringify({})
       });
-      if (!response.ok) {
-        const payload = (await response.json().catch(() => ({}))) as { error?: string };
-        throw new Error(payload.error ?? `Sync failed (${response.status})`);
+
+      if (!incrementalResponse.ok) {
+        const fullSyncResponse = await apiFetch("/plaid/transactions/sync", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({ days: 90 })
+        });
+
+        if (!fullSyncResponse.ok) {
+          const payload = (await incrementalResponse.json().catch(() => ({}))) as {
+            error?: string;
+          };
+          throw new Error(payload.error ?? `Sync failed (${incrementalResponse.status})`);
+        }
+
+        const nowIso = new Date().toISOString();
+        setLastSyncedAt(nowIso);
+        setPlaidMessage("Full sync complete. Transactions refreshed.");
+        setRefreshNonce((current) => current + 1);
+        return;
       }
       const nowIso = new Date().toISOString();
       setLastSyncedAt(nowIso);
