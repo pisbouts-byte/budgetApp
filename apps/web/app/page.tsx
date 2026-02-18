@@ -125,6 +125,21 @@ interface MfaChallengeResponse {
   challengeToken: string;
 }
 
+interface MfaStatusResponse {
+  enabled: boolean;
+  enrolledAt: string | null;
+  lastVerifiedAt: string | null;
+}
+
+interface MfaSetupResponse {
+  issuer: string;
+  accountName: string;
+  secret: string;
+  otpauthUrl: string;
+  periodSeconds: number;
+  digits: number;
+}
+
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:4000";
 
@@ -231,7 +246,7 @@ export default function HomePage() {
   const [showTransactionFilters, setShowTransactionFilters] = useState(false);
   const [showReportFilters, setShowReportFilters] = useState(false);
   const [activeTab, setActiveTab] = useState<
-    "transactions" | "budgets" | "rules" | "reports"
+    "transactions" | "budgets" | "rules" | "reports" | "security"
   >("transactions");
   const [authMode, setAuthMode] = useState<"login" | "register">("login");
   const [email, setEmail] = useState("");
@@ -305,6 +320,14 @@ export default function HomePage() {
   const [reportLoading, setReportLoading] = useState(false);
   const [reportError, setReportError] = useState<string | null>(null);
   const [reportResult, setReportResult] = useState<ReportQueryResponse | null>(null);
+  const [mfaStatusLoading, setMfaStatusLoading] = useState(false);
+  const [mfaActionLoading, setMfaActionLoading] = useState(false);
+  const [mfaError, setMfaError] = useState<string | null>(null);
+  const [mfaMessage, setMfaMessage] = useState<string | null>(null);
+  const [mfaStatus, setMfaStatus] = useState<MfaStatusResponse | null>(null);
+  const [mfaSetup, setMfaSetup] = useState<MfaSetupResponse | null>(null);
+  const [mfaEnableCode, setMfaEnableCode] = useState("");
+  const [mfaDisableCode, setMfaDisableCode] = useState("");
   const [newRule, setNewRule] = useState({
     categoryId: "",
     field: "MERCHANT_NAME",
@@ -1552,12 +1575,128 @@ export default function HomePage() {
     }
   }
 
+  async function loadMfaStatus() {
+    if (!isAuthenticated) {
+      setMfaStatus(null);
+      return;
+    }
+    setMfaStatusLoading(true);
+    setMfaError(null);
+    try {
+      const response = await apiFetch("/auth/mfa/status");
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => ({}))) as { error?: string };
+        throw new Error(payload.error ?? `Failed to load MFA status (${response.status})`);
+      }
+      const payload = (await response.json()) as MfaStatusResponse;
+      setMfaStatus(payload);
+    } catch (error) {
+      setMfaError(error instanceof Error ? error.message : "Failed to load MFA status");
+      setMfaStatus(null);
+    } finally {
+      setMfaStatusLoading(false);
+    }
+  }
+
+  async function startMfaSetup() {
+    setMfaActionLoading(true);
+    setMfaError(null);
+    setMfaMessage(null);
+    try {
+      const response = await apiFetch("/auth/mfa/setup", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({})
+      });
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => ({}))) as { error?: string };
+        throw new Error(payload.error ?? `Failed to start MFA setup (${response.status})`);
+      }
+      const payload = (await response.json()) as MfaSetupResponse;
+      setMfaSetup(payload);
+      setMfaMessage("MFA setup started. Add this secret in your authenticator app.");
+    } catch (error) {
+      setMfaError(error instanceof Error ? error.message : "Failed to start MFA setup");
+    } finally {
+      setMfaActionLoading(false);
+    }
+  }
+
+  async function enableMfa() {
+    if (!mfaEnableCode.trim()) {
+      setMfaError("Enter the MFA code from your authenticator app.");
+      return;
+    }
+    setMfaActionLoading(true);
+    setMfaError(null);
+    setMfaMessage(null);
+    try {
+      const response = await apiFetch("/auth/mfa/enable", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ code: mfaEnableCode.trim() })
+      });
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => ({}))) as { error?: string };
+        throw new Error(payload.error ?? `Failed to enable MFA (${response.status})`);
+      }
+      setMfaEnableCode("");
+      setMfaMessage("MFA enabled.");
+      setRefreshNonce((current) => current + 1);
+      await loadMfaStatus();
+    } catch (error) {
+      setMfaError(error instanceof Error ? error.message : "Failed to enable MFA");
+    } finally {
+      setMfaActionLoading(false);
+    }
+  }
+
+  async function disableMfa() {
+    if (!mfaDisableCode.trim()) {
+      setMfaError("Enter your current MFA code to disable.");
+      return;
+    }
+    setMfaActionLoading(true);
+    setMfaError(null);
+    setMfaMessage(null);
+    try {
+      const response = await apiFetch("/auth/mfa/disable", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ code: mfaDisableCode.trim() })
+      });
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => ({}))) as { error?: string };
+        throw new Error(payload.error ?? `Failed to disable MFA (${response.status})`);
+      }
+      setMfaDisableCode("");
+      setMfaSetup(null);
+      setMfaMessage("MFA disabled.");
+      setRefreshNonce((current) => current + 1);
+      await loadMfaStatus();
+    } catch (error) {
+      setMfaError(error instanceof Error ? error.message : "Failed to disable MFA");
+    } finally {
+      setMfaActionLoading(false);
+    }
+  }
+
   async function logout() {
     await apiFetch("/auth/logout", { method: "POST" });
     setIsAuthenticated(false);
     setCsrfToken("");
     setMfaChallengeToken(null);
     setMfaCode("");
+    setMfaStatus(null);
+    setMfaSetup(null);
+    setMfaEnableCode("");
+    setMfaDisableCode("");
     setCurrentUser(null);
     setPassword("");
     setPlaidMessage(null);
@@ -1565,6 +1704,13 @@ export default function HomePage() {
     setResult(null);
     setPage(1);
   }
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      return;
+    }
+    void loadMfaStatus();
+  }, [isAuthenticated, refreshNonce]);
 
   const menuItems: MenuProps["items"] = [
     {
@@ -1714,13 +1860,16 @@ export default function HomePage() {
           <Tabs
             activeKey={activeTab}
             onChange={(key: string) =>
-              setActiveTab(key as "transactions" | "budgets" | "rules" | "reports")
+              setActiveTab(
+                key as "transactions" | "budgets" | "rules" | "reports" | "security"
+              )
             }
             items={[
               { key: "transactions", label: "Transactions" },
               { key: "budgets", label: "Budgets" },
               { key: "rules", label: "Rules" },
-              { key: "reports", label: "Reports" }
+              { key: "reports", label: "Reports" },
+              { key: "security", label: "Security" }
             ]}
           />
         )}
@@ -2253,6 +2402,96 @@ export default function HomePage() {
               </>
             )}
           </>
+        )}
+        {isAuthenticated && activeTab === "security" && (
+          <div>
+            <Typography.Title level={4}>Security Settings</Typography.Title>
+            {mfaStatusLoading && <p className="hint">Loading MFA status...</p>}
+            {mfaError && <Alert type="error" showIcon message={mfaError} />}
+            {mfaMessage && <Alert type="success" showIcon message={mfaMessage} />}
+            <Card size="small" style={{ marginBottom: "0.75rem" }}>
+              <p>
+                MFA status: <strong>{mfaStatus?.enabled ? "Enabled" : "Disabled"}</strong>
+              </p>
+              {mfaStatus?.enrolledAt && (
+                <p className="hint">
+                  Enrolled: {new Date(mfaStatus.enrolledAt).toLocaleString()}
+                </p>
+              )}
+              {mfaStatus?.lastVerifiedAt && (
+                <p className="hint">
+                  Last verified: {new Date(mfaStatus.lastVerifiedAt).toLocaleString()}
+                </p>
+              )}
+            </Card>
+
+            {!mfaStatus?.enabled && (
+              <Card size="small" style={{ marginBottom: "0.75rem" }}>
+                <Typography.Title level={5} style={{ marginTop: 0 }}>
+                  Enable MFA
+                </Typography.Title>
+                <p className="hint">
+                  1) Start setup, 2) add secret to your authenticator app, 3) enter a code to
+                  enable MFA.
+                </p>
+                <Space wrap style={{ marginBottom: "0.5rem" }}>
+                  <Button onClick={() => void startMfaSetup()} loading={mfaActionLoading}>
+                    Start MFA Setup
+                  </Button>
+                </Space>
+                {mfaSetup && (
+                  <div style={{ marginBottom: "0.5rem" }}>
+                    <p>
+                      <strong>Issuer:</strong> {mfaSetup.issuer}
+                    </p>
+                    <p>
+                      <strong>Account:</strong> {mfaSetup.accountName}
+                    </p>
+                    <p>
+                      <strong>Secret:</strong> <code>{mfaSetup.secret}</code>
+                    </p>
+                  </div>
+                )}
+                <Space wrap>
+                  <Input
+                    placeholder="Enter 6-digit code"
+                    value={mfaEnableCode}
+                    onChange={(event) => setMfaEnableCode(event.target.value)}
+                    style={{ width: 220 }}
+                  />
+                  <Button
+                    type="primary"
+                    onClick={() => void enableMfa()}
+                    loading={mfaActionLoading}
+                  >
+                    Enable MFA
+                  </Button>
+                </Space>
+              </Card>
+            )}
+
+            {mfaStatus?.enabled && (
+              <Card size="small">
+                <Typography.Title level={5} style={{ marginTop: 0 }}>
+                  Disable MFA
+                </Typography.Title>
+                <p className="hint">
+                  To disable MFA, enter a current code from your authenticator app.
+                </p>
+                <Space wrap>
+                  <Input
+                    placeholder="Current MFA code"
+                    value={mfaDisableCode}
+                    onChange={(event) => setMfaDisableCode(event.target.value)}
+                    style={{ width: 220 }}
+                  />
+                  <Button danger onClick={() => void disableMfa()} loading={mfaActionLoading}>
+                    Disable MFA
+                  </Button>
+                </Space>
+              </Card>
+            )}
+          </div>
         )}
       </section>
     </main>
