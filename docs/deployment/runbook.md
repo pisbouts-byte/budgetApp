@@ -73,3 +73,59 @@ Last updated: 2026-02-12
 - Include `x-request-id` from failed responses when triaging API errors.
 - Use structured events (`request.start`, `request.finish`, `request.error`, `server.start`) for traceability.
 - For Plaid callback incidents, verify webhook delivery and retry behavior in `sync_job`.
+
+## Incident Playbook: Health Check Down
+Trigger condition:
+- Uptime monitor or Render alert indicates `GET /health` is failing or timing out.
+
+Immediate triage (first 5 minutes):
+1. Confirm outage is real:
+   - Open `https://spend-tracker-api.onrender.com/health`
+   - Open `https://spend-tracker-api.onrender.com/health/metrics`
+2. Check Render service status:
+   - service state (healthy/deploying/crashed)
+   - latest deploy logs
+   - runtime logs for recent `request.error` events
+3. Identify blast radius:
+   - auth failures?
+   - transaction sync failures?
+   - webhook failures?
+
+Containment (5-15 minutes):
+1. If bad deploy suspected:
+   - rollback to previous known-good deploy in Render.
+2. If config/secrets issue suspected:
+   - verify required env vars are present and valid (`DATABASE_URL`, Plaid vars, `JWT_SECRET`, `ENCRYPTION_KEY`, CORS settings).
+3. If DB connectivity issue:
+   - verify Postgres service status and credentials.
+   - confirm `DATABASE_URL` includes required SSL settings.
+
+Recovery verification:
+1. Re-check:
+   - `GET /health` returns 200
+   - `GET /health/metrics` returns 200
+2. Run app smoke checks:
+   - register/login
+   - transactions list load
+   - manual `Sync now`
+3. Confirm webhook path:
+   - Plaid webhook test to `/webhooks/plaid` succeeds.
+
+Communication template:
+1. Initial update:
+   - "Investigating API outage affecting auth/transactions. Started at <time>."
+2. Mitigation update:
+   - "Rolled back to previous deploy / fixed configuration. Monitoring recovery."
+3. Resolution update:
+   - "Service restored at <time>. Root cause: <summary>. Preventive action: <action>."
+
+Post-incident (within 24 hours):
+1. Record timeline and root cause.
+2. Add prevention items (tests, alerts, guardrails).
+3. Update this runbook if any response step was missing.
+
+Quick command:
+1. Run incident probe script:
+   - `npm run incident:check`
+2. Optional custom endpoint:
+   - `API_BASE_URL=https://spend-tracker-api.onrender.com npm run incident:check`

@@ -6,8 +6,10 @@ const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 const CSRF_EXEMPT_PATHS = new Set([
   "/auth/login",
   "/auth/register",
+  "/auth/mfa/verify-login",
   "/login",
-  "/register"
+  "/register",
+  "/mfa/verify-login"
 ]);
 
 function firstHeaderValue(value: string | string[] | undefined) {

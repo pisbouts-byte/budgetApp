@@ -120,6 +120,11 @@ interface AuthResponse {
   csrfToken: string;
 }
 
+interface MfaChallengeResponse {
+  mfaRequired: true;
+  challengeToken: string;
+}
+
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:4000";
 
@@ -234,6 +239,8 @@ export default function HomePage() {
   const [displayName, setDisplayName] = useState("");
   const [authLoading, setAuthLoading] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
+  const [mfaChallengeToken, setMfaChallengeToken] = useState<string | null>(null);
+  const [mfaCode, setMfaCode] = useState("");
   const [currentUser, setCurrentUser] = useState<{
     email: string;
     displayName: string | null;
@@ -1433,6 +1440,8 @@ export default function HomePage() {
 
     setAuthLoading(true);
     setAuthError(null);
+    setMfaChallengeToken(null);
+    setMfaCode("");
 
     try {
       const response = await apiFetch(`/auth/${authMode}`, {
@@ -1469,12 +1478,19 @@ export default function HomePage() {
         );
       }
 
-      const payload = (await response.json()) as AuthResponse;
+      const payload = (await response.json()) as AuthResponse | MfaChallengeResponse;
+      if ("mfaRequired" in payload && payload.mfaRequired) {
+        setMfaChallengeToken(payload.challengeToken);
+        setPassword("");
+        setAuthError(null);
+        return;
+      }
+      const authPayload = payload as AuthResponse;
       setCurrentUser({
-        email: payload.user.email,
-        displayName: payload.user.displayName
+        email: authPayload.user.email,
+        displayName: authPayload.user.displayName
       });
-      setCsrfToken(payload.csrfToken);
+      setCsrfToken(authPayload.csrfToken);
       setIsAuthenticated(true);
       setPassword("");
       setRefreshNonce((current) => current + 1);
@@ -1489,10 +1505,59 @@ export default function HomePage() {
     }
   }
 
+  async function verifyMfaLogin() {
+    if (!mfaChallengeToken) {
+      setAuthError("No MFA challenge is active.");
+      return;
+    }
+    if (!mfaCode.trim()) {
+      setAuthError("Enter your MFA code.");
+      return;
+    }
+
+    setAuthLoading(true);
+    setAuthError(null);
+    try {
+      const response = await apiFetch("/auth/mfa/verify-login", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          challengeToken: mfaChallengeToken,
+          code: mfaCode.trim()
+        })
+      });
+      if (!response.ok) {
+        const errorPayload = (await response.json().catch(() => ({}))) as {
+          error?: string;
+        };
+        throw new Error(errorPayload.error ?? `MFA verification failed (${response.status})`);
+      }
+
+      const payload = (await response.json()) as AuthResponse;
+      setCurrentUser({
+        email: payload.user.email,
+        displayName: payload.user.displayName
+      });
+      setCsrfToken(payload.csrfToken);
+      setIsAuthenticated(true);
+      setMfaChallengeToken(null);
+      setMfaCode("");
+      setRefreshNonce((current) => current + 1);
+    } catch (error) {
+      setAuthError(error instanceof Error ? error.message : "Failed to verify MFA");
+    } finally {
+      setAuthLoading(false);
+    }
+  }
+
   async function logout() {
     await apiFetch("/auth/logout", { method: "POST" });
     setIsAuthenticated(false);
     setCsrfToken("");
+    setMfaChallengeToken(null);
+    setMfaCode("");
     setCurrentUser(null);
     setPassword("");
     setPlaidMessage(null);
@@ -1557,57 +1622,90 @@ export default function HomePage() {
 
         {!isAuthenticated && (
           <div className="authPanel">
-            <div className="authModeRow">
-              <Button
-                className={authMode === "login" ? "active" : ""}
-                onClick={() => setAuthMode("login")}
-              >
-                Sign In
-              </Button>
-              <Button
-                className={authMode === "register" ? "active" : ""}
-                onClick={() => setAuthMode("register")}
-              >
-                Register
-              </Button>
-            </div>
-            <div className="authFields">
-              <label>
-                Email
-                <Input
-                  value={email}
-                  onChange={(event) => setEmail(event.target.value)}
-                  placeholder="you@example.com"
-                />
-              </label>
-              <label>
-                Password
-                <Input.Password
-                  type="password"
-                  value={password}
-                  onChange={(event) => setPassword(event.target.value)}
-                  placeholder="Your password"
-                />
-              </label>
-              {authMode === "register" && (
+            {!mfaChallengeToken && (
+              <>
+                <div className="authModeRow">
+                  <Button
+                    className={authMode === "login" ? "active" : ""}
+                    onClick={() => setAuthMode("login")}
+                  >
+                    Sign In
+                  </Button>
+                  <Button
+                    className={authMode === "register" ? "active" : ""}
+                    onClick={() => setAuthMode("register")}
+                  >
+                    Register
+                  </Button>
+                </div>
+                <div className="authFields">
+                  <label>
+                    Email
+                    <Input
+                      value={email}
+                      onChange={(event) => setEmail(event.target.value)}
+                      placeholder="you@example.com"
+                    />
+                  </label>
+                  <label>
+                    Password
+                    <Input.Password
+                      type="password"
+                      value={password}
+                      onChange={(event) => setPassword(event.target.value)}
+                      placeholder="Your password"
+                    />
+                  </label>
+                  {authMode === "register" && (
+                    <label>
+                      Display Name
+                      <Input
+                        value={displayName}
+                        onChange={(event) => setDisplayName(event.target.value)}
+                        placeholder="Your name"
+                      />
+                    </label>
+                  )}
+                  <Button
+                    type="primary"
+                    onClick={() => void submitAuth()}
+                    disabled={authLoading}
+                    loading={authLoading}
+                  >
+                    {authMode === "login" ? "Sign In" : "Create Account"}
+                  </Button>
+                </div>
+              </>
+            )}
+            {mfaChallengeToken && (
+              <div className="authFields">
                 <label>
-                  Display Name
+                  MFA Code
                   <Input
-                    value={displayName}
-                    onChange={(event) => setDisplayName(event.target.value)}
-                    placeholder="Your name"
+                    value={mfaCode}
+                    onChange={(event) => setMfaCode(event.target.value)}
+                    placeholder="6-digit authenticator code"
                   />
                 </label>
-              )}
-              <Button
-                type="primary"
-                onClick={() => void submitAuth()}
-                disabled={authLoading}
-                loading={authLoading}
-              >
-                {authMode === "login" ? "Sign In" : "Create Account"}
-              </Button>
-            </div>
+                <Button
+                  type="primary"
+                  onClick={() => void verifyMfaLogin()}
+                  disabled={authLoading}
+                  loading={authLoading}
+                >
+                  Verify MFA
+                </Button>
+                <Button
+                  onClick={() => {
+                    setMfaChallengeToken(null);
+                    setMfaCode("");
+                  }}
+                  disabled={authLoading}
+                >
+                  Back
+                </Button>
+              </div>
+            )}
             {authError && <Alert type="error" showIcon message={authError} />}
           </div>
         )}

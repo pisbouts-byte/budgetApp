@@ -62,6 +62,15 @@ Monorepo scaffold for a spending tracker app with Plaid integration, editable ca
 - V1 launch gate checklist: `docs/deployment/v1-launch-checklist.md`
 - Plaid Sandbox -> Production cutover: `docs/deployment/plaid-live-cutover.md`
 
+## Compliance & Security Docs
+- Privacy policy (Markdown): `docs/compliance/privacy-policy.md`
+- Privacy policy (PDF): `docs/compliance/privacy-policy.pdf`
+- Sole-prop information security policy (Markdown): `docs/compliance/sole-prop-information-security-policy.md`
+- Sole-prop information security policy (PDF): `docs/compliance/sole-prop-information-security-policy.pdf`
+- MFA implementation plan: `docs/security/mfa-implementation-plan.md`
+- Audit log plan: `docs/security/audit-log-plan.md`
+- Regenerate policy PDFs: `npm run policy:pdf`
+
 ## Transactions API Baseline
 - List transactions: `GET /transactions`
 - Supports filters: account, category, date range, includeExcluded, text search

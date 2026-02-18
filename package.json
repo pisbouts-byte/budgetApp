@@ -13,6 +13,8 @@
     "db:migrate:create": "set -a; [ -f ./.env ] && . ./.env; set +a; node-pg-migrate create --migrations-dir db/migrations --migration-file-language sql",
     "db:migrate:up": "set -a; [ -f ./.env ] && . ./.env; set +a; node-pg-migrate up --migrations-dir db/migrations --migration-file-language sql",
     "db:migrate:down": "set -a; [ -f ./.env ] && . ./.env; set +a; node-pg-migrate down --migrations-dir db/migrations --migration-file-language sql",
+    "incident:check": "bash scripts/incident-quick-check.sh",
+    "policy:pdf": "bash scripts/generate-policy-pdfs.sh",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
     "lint": "npm run lint --workspaces --if-present"
